@@ -2,7 +2,7 @@ import express, { type Request, type Response } from 'express';
 import path from 'node:path';
 import { z } from 'zod';
 import type { Store, TrackedKeyword } from './domain/types.js';
-import { SerpError, publicErrorMessage } from './domain/errors.js';
+import { publicErrorMessage } from './domain/errors.js';
 import { cleanCountry, cleanLanguage, cleanQuery, normalizeDomain, nowIso, id } from './domain/utils.js';
 import { SerpFetcher, positionForDomain } from './services/serp-fetcher.js';
 import { makeComparison } from './services/comparison.js';

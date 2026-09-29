@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import { makeComparison } from '../server/services/comparison.js';
 import { positionForDomain, SerpFetcher } from '../server/services/serp-fetcher.js';
 import { SerpApiClient } from '../server/services/serp-api-client.js';

@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import mysql, { type Pool } from 'mysql2/promise';
+import mysql, { type Pool, type RowDataPacket, type ResultSetHeader } from 'mysql2/promise';
 import type { Engine, SearchResultRecord, Snapshot, Store, TrackedKeyword } from '../domain/types.js';
 import { id, nowIso } from '../domain/utils.js';
 
@@ -123,7 +123,7 @@ class MysqlStore implements Store {
   }
 
   async findFreshSearch(engine: Engine, query: string, gl: string, hl: string, ttlMs: number): Promise<SearchResultRecord | null> {
-    const [rows] = await this.pool.query<any[]>(
+    const [rows] = await this.pool.query<RowDataPacket[]>(
       `SELECT * FROM search_results WHERE engine = ? AND query_text = ? AND gl_code = ? AND hl_code = ? AND fetched_at >= ? ORDER BY fetched_at DESC LIMIT 1`,
       [engine, query, gl, hl, new Date(Date.now() - ttlMs)],
     );
@@ -139,12 +139,12 @@ class MysqlStore implements Store {
   }
 
   async listTracked(): Promise<TrackedKeyword[]> {
-    const [rows] = await this.pool.query<any[]>('SELECT * FROM tracked_keywords ORDER BY created_at DESC');
+    const [rows] = await this.pool.query<RowDataPacket[]>('SELECT * FROM tracked_keywords ORDER BY created_at DESC');
     return Promise.all(rows.map((row) => this.withSnapshots(this.trackedFromRow(row))));
   }
 
   async findTracked(trackedId: string): Promise<TrackedKeyword | null> {
-    const [rows] = await this.pool.query<any[]>('SELECT * FROM tracked_keywords WHERE id = ? LIMIT 1', [trackedId]);
+    const [rows] = await this.pool.query<RowDataPacket[]>('SELECT * FROM tracked_keywords WHERE id = ? LIMIT 1', [trackedId]);
     return rows[0] ? this.withSnapshots(this.trackedFromRow(rows[0])) : null;
   }
 
@@ -158,7 +158,7 @@ class MysqlStore implements Store {
   }
 
   async deleteTracked(trackedId: string): Promise<boolean> {
-    const [result] = await this.pool.query<any>('DELETE FROM tracked_keywords WHERE id = ?', [trackedId]);
+    const [result] = await this.pool.query<ResultSetHeader>('DELETE FROM tracked_keywords WHERE id = ?', [trackedId]);
     return result.affectedRows > 0;
   }
 
@@ -170,7 +170,7 @@ class MysqlStore implements Store {
   }
 
   private async withSnapshots(tracked: TrackedKeyword): Promise<TrackedKeyword> {
-    const [rows] = await this.pool.query<any[]>('SELECT * FROM snapshots WHERE tracked_keyword_id = ? ORDER BY checked_at ASC', [tracked.id]);
+    const [rows] = await this.pool.query<RowDataPacket[]>('SELECT * FROM snapshots WHERE tracked_keyword_id = ? ORDER BY checked_at ASC', [tracked.id]);
     tracked.snapshots = rows.map((row) => ({
       id: row.id,
       trackedKeywordId: row.tracked_keyword_id,
@@ -181,7 +181,7 @@ class MysqlStore implements Store {
     return tracked;
   }
 
-  private searchFromRow(row: any): SearchResultRecord {
+  private searchFromRow(row: RowDataPacket): SearchResultRecord {
     return {
       id: row.id,
       engine: row.engine,
@@ -193,7 +193,7 @@ class MysqlStore implements Store {
     };
   }
 
-  private trackedFromRow(row: any): TrackedKeyword {
+  private trackedFromRow(row: RowDataPacket): TrackedKeyword {
     return {
       id: row.id,
       query: row.query_text,
