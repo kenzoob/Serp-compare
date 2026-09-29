@@ -1,62 +1,29 @@
 # SERP Compare
 
-SERP Compare compare les 10 premiers résultats organiques Google et Bing pour une requête donnée, met en évidence les domaines communs et suit la position d'un domaine au fil du temps.
+[![CI](https://github.com/kenzoob/Serp-compare/actions/workflows/ci.yml/badge.svg)](https://github.com/kenzoob/Serp-compare/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-339933?logo=node.js&logoColor=white)](package.json)
 
-## Sommaire
+Compare Google and Bing's top 10 organic results for any query, surface the domains that rank on both, and track how a domain's position moves over time.
 
-- [Fonctionnalités](#fonctionnalités)
-- [Stack technique](#stack-technique)
+No API key required to try it — the app ships with a deterministic demo engine and only switches to live data when you provide one.
+
+## Contents
+
+- [Quickstart](#quickstart)
+- [Features](#features)
+- [Tech stack](#tech-stack)
 - [Architecture](#architecture)
-- [Installation](#installation)
-- [Variables d'environnement](#variables-denvironnement)
+- [Configuration](#configuration)
 - [Scripts](#scripts)
-- [API](#api)
-- [Tests et couverture](#tests-et-couverture)
-- [Intégration continue](#intégration-continue)
-- [Déploiement](#déploiement)
-- [Direction visuelle](#direction-visuelle)
-- [Licence](#licence)
+- [API reference](#api-reference)
+- [Testing](#testing)
+- [Continuous integration](#continuous-integration)
+- [Deployment](#deployment)
+- [Visual design](#visual-design)
+- [License](#license)
 
-## Fonctionnalités
-
-- **Compare** — une requête, un pays (`gl`) et une langue (`hl`) affichent deux colonnes de résultats (Google / Bing), le score de chevauchement, les domaines partagés et l'âge du cache. Un bouton *Refresh* force un nouvel appel en ignorant le cache.
-- **Tracking** — enregistre un couple requête/domaine, rafraîchit sa position à la demande, affiche l'historique sous forme de graphique SVG et exporte l'historique complet en CSV.
-- **Mode démo** — l'application démarre immédiatement sans clé API. Le mode démo produit des résultats déterministes (basés sur un hash de la requête) pour tester l'ensemble du parcours sans dépendance externe.
-- **Mode SerpApi** — en renseignant `SERPAPI_KEY`, l'application bascule automatiquement sur des résultats live. Les erreurs de clé invalide, quota épuisé, timeout et réseau sont interceptées et traduites en messages lisibles côté client.
-- **Cache** — chaque recherche moteur/requête/pays/langue est mise en cache 24h ; un rafraîchissement explicite invalide le cache pour cette clé.
-- **Rafraîchissement automatisable** — `POST /api/refresh` et le script `pnpm refresh` rejouent tous les suivis enregistrés, pour un déclenchement via cron.
-
-## Stack technique
-
-| Couche | Choix |
-|---|---|
-| Frontend | React 19, TypeScript, Vite |
-| Backend | Node.js, Express 5, TypeScript |
-| Validation | Zod |
-| Persistance | Fichier JSON local par défaut, MySQL si `DATABASE_URL` est fourni |
-| Tests | Vitest, coverage v8 |
-| Lint | ESLint (flat config), typescript-eslint, eslint-plugin-react-hooks |
-| CI | GitHub Actions |
-| Déploiement | Dockerfile multi-stage (build Vite + tsc, runtime Node alpine) |
-
-## Architecture
-
-```
-client/src/        interface React (pages Compare et Tracking, appels API)
-server/
-  domain/          types, erreurs typées (SerpError), utilitaires purs
-  services/        SerpApiClient (appel externe + mode démo), SerpFetcher (cache), comparison (calcul du chevauchement)
-  repositories/     JsonStore (fichier local) et MysqlStore (SQL), sélectionnées par createStore()
-  app.ts           routes Express, validation Zod, rate limiting, gestion d'erreurs
-  index.ts         point d'entrée (écoute HTTP)
-  refresh.ts        script CLI qui appelle POST /api/refresh
-tests/              tests unitaires et d'intégration (Vitest)
-public/             logo, manifeste de routes
-```
-
-Le serveur sert les fichiers construits (`dist/client`) et les routes `/api/*` sous une seule origine, ce qui évite les problèmes CORS.
-
-## Installation
+## Quickstart
 
 ```bash
 pnpm install
@@ -64,79 +31,146 @@ cp .env.example .env
 pnpm dev
 ```
 
-Ouvrir `http://localhost:3000`. La persistance locale utilise `data/serp-compare.json` par défaut. Si `DATABASE_URL` pointe vers une URL MySQL, le serveur crée automatiquement les trois tables nécessaires (`search_results`, `tracked_keywords`, `snapshots`) au démarrage.
+Open `http://localhost:3000`. That's it — no key, no database, no config. The app runs in demo mode out of the box with realistic, deterministic results so you can exercise the full flow immediately.
 
-## Variables d'environnement
+## Features
 
-| Variable | Rôle | Défaut |
+- **Compare** — enter a query, country (`gl`) and language (`hl`); see Google and Bing side by side, an overlap score, the shared domains highlighted, and how stale the cached data is. A *Refresh* action bypasses the cache for a live re-fetch.
+- **Tracking** — save a query/domain pair, refresh its rank on demand, watch its history render as an SVG line chart, and export the full history to CSV.
+- **Demo mode** — zero setup. Results are generated deterministically from a hash of the query, so the same input always produces the same believable result set — useful for testing the whole UX without hitting a real API.
+- **Live mode** — set `SERPAPI_KEY` and the app transparently switches to [SerpApi](https://serpapi.com). Invalid-key, quota-exhausted, timeout and network failures are all caught server-side and turned into readable client messages instead of raw errors.
+- **Caching** — each engine/query/country/language combination is cached for 24h; an explicit refresh invalidates just that cache entry.
+- **Automatable refresh** — `POST /api/refresh` and the `pnpm refresh` CLI script replay every tracked keyword in one call, so a daily cron can keep history up to date.
+
+## Tech stack
+
+| Layer | Choice |
+|---|---|
+| Frontend | React 19, TypeScript, Vite |
+| Backend | Node.js, Express 5, TypeScript |
+| Validation | Zod |
+| Storage | Local JSON file by default; MySQL when `DATABASE_URL` is set |
+| Tests | Vitest, `@vitest/coverage-v8` |
+| Lint | ESLint (flat config), typescript-eslint, eslint-plugin-react-hooks |
+| CI | GitHub Actions |
+| Deploy | Multi-stage Dockerfile (Vite + tsc build, Node alpine runtime) |
+
+## Architecture
+
+```
+client/src/           React UI — Compare and Tracking pages, thin API client
+server/
+  domain/              pure types, typed errors (SerpError), string/date utils
+  services/
+    serp-api-client.ts   calls SerpApi, or generates demo results when no key is set
+    serp-fetcher.ts       wraps the client with the 24h cache
+    comparison.ts          computes overlap % and shared domains
+  repositories/
+    database.ts           JsonStore (file) and MysqlStore (SQL) behind one Store interface,
+                            picked at runtime by createStore()
+  app.ts                 Express routes, Zod validation, rate limiting, error mapping
+  index.ts               HTTP entry point
+  refresh.ts              CLI: replays every tracked keyword via POST /api/refresh
+tests/                  unit + integration tests (Vitest)
+public/                 logo, route manifest
+```
+
+The server serves the built client (`dist/client`) and the `/api/*` routes from the same origin — one deployable unit, no CORS to manage.
+
+Storage is behind a single `Store` interface (`domain/types.ts`), so `JsonStore` and `MysqlStore` are interchangeable: business logic never knows which one it's talking to.
+
+## Configuration
+
+| Variable | Purpose | Default |
 |---|---|---|
-| `SERPAPI_KEY` | Active le mode live SerpApi. Laissée vide, l'application reste en mode démo. | *(vide)* |
-| `DATABASE_URL` | URL MySQL (`mysql://...`). Absente, le stockage retombe sur un fichier JSON local. | *(vide)* |
-| `PORT` | Port d'écoute du serveur Express. | `3000` |
-| `NODE_ENV` | À laisser **vide en local**. Vite lit ce fichier `.env` au build : `NODE_ENV=development` y force `pnpm build` en mode développement (bundle non minifié, ~2x plus lourd). Le Dockerfile le fixe lui-même à `production` au runtime. | *(vide)* |
+| `SERPAPI_KEY` | Enables live SerpApi results. Left empty, the app stays in demo mode. | *(empty)* |
+| `DATABASE_URL` | A `mysql://...` URL. Omitted, storage falls back to a local JSON file. | *(empty)* |
+| `PORT` | Port the Express server listens on. | `3000` |
+| `NODE_ENV` | **Leave empty locally.** Vite reads this `.env` file at build time — `NODE_ENV=development` here silently forces `pnpm build` into development mode (an unminified bundle, roughly 2x larger). The Dockerfile sets it to `production` explicitly at runtime, so containers are unaffected. | *(empty)* |
 
 ## Scripts
 
 ```bash
-pnpm dev             # serveur de dev (tsx watch, mode démo par défaut)
-pnpm lint            # ESLint sur tout le repo
-pnpm typecheck       # tsc --noEmit côté serveur puis côté client
-pnpm test            # tests Vitest
-pnpm test:coverage   # tests + rapport de couverture (seuil 80% statements/lines)
-pnpm build           # build client (Vite) puis serveur (tsc)
-pnpm start           # lance le serveur compilé (dist-server)
-pnpm refresh         # rejoue tous les suivis via POST /api/refresh (CLI)
+pnpm dev             # dev server (tsx watch), demo mode by default
+pnpm lint            # ESLint across the repo
+pnpm typecheck       # tsc --noEmit for server, then client
+pnpm test            # Vitest
+pnpm test:coverage   # Vitest + coverage report (80% statements/lines gate)
+pnpm build           # build client (Vite) then server (tsc)
+pnpm start           # run the compiled server (dist-server)
+pnpm refresh         # CLI: replay all tracked keywords via POST /api/refresh
 ```
 
-## API
+## API reference
 
-Toutes les routes `/api/*` sont limitées à 60 requêtes/minute par IP.
+All `/api/*` routes are rate-limited to 60 requests/minute per IP.
 
-- `GET /health` — état du serveur et mode demo/SerpApi.
-- `GET /api/config` — expose `{ demoMode, cacheTtlHours }` pour l'UI.
-- `GET /api/compare?q=react&gl=us&hl=en&refresh=0` — comparaison Google/Bing.
-- `GET /api/tracked` — liste des suivis.
-- `POST /api/tracked` — crée un suivi avec `{ query, domain, gl, hl }`.
-- `POST /api/tracked/:id/refresh` — enregistre un snapshot pour un suivi.
-- `GET /api/tracked/:id/history` — renvoie l'historique d'un suivi.
-- `GET /api/tracked/:id/export.csv` — export CSV de l'historique.
-- `DELETE /api/tracked/:id` — supprime un suivi.
-- `POST /api/refresh` — rafraîchit tous les suivis enregistrés.
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Server status and current mode (`demo` / `serpapi`). |
+| `GET` | `/api/config` | `{ demoMode, cacheTtlHours }` for the UI. |
+| `GET` | `/api/compare` | Google vs. Bing comparison. Query params: `q`, `gl`, `hl`, `refresh` (`0`/`1`). |
+| `GET` | `/api/tracked` | List all tracked keywords. |
+| `POST` | `/api/tracked` | Create a tracked keyword. Body: `{ query, domain, gl, hl }`. |
+| `POST` | `/api/tracked/:id/refresh` | Fetch current positions and save a snapshot. |
+| `GET` | `/api/tracked/:id/history` | Full history for one tracked keyword. |
+| `GET` | `/api/tracked/:id/export.csv` | History as a CSV download. |
+| `DELETE` | `/api/tracked/:id` | Remove a tracked keyword. |
+| `POST` | `/api/refresh` | Refresh every tracked keyword in one call. |
 
-## Tests et couverture
+Example:
+
+```bash
+curl "http://localhost:3000/api/compare?q=react&gl=us&hl=en"
+```
+
+```json
+{
+  "query": "react",
+  "overlapCount": 7,
+  "overlapPercentage": 70,
+  "sharedDomains": ["github.com", "stackoverflow.com", "..."],
+  "engines": {
+    "google": { "results": [ /* 10 ranked items */ ], "cached": false },
+    "bing":   { "results": [ /* 10 ranked items */ ], "cached": false }
+  }
+}
+```
+
+## Testing
 
 ```bash
 pnpm test
 pnpm test:coverage
 ```
 
-La suite couvre : le calcul de chevauchement, le cache du fetcher, le parsing SerpApi, le mapping d'erreurs (`invalid_key`/`quota_exhausted`/`timeout`/`network`/`provider`, testé via un `fetch` mocké), le repository JSON (cycle CRUD complet, expiration du cache, relecture d'un fichier existant) et toutes les routes de l'API.
+Coverage includes: overlap-score math, the fetcher's cache logic, SerpApi response parsing, every error-mapping branch (`invalid_key` / `quota_exhausted` / `timeout` / `network` / `provider`, exercised through a mocked `fetch`), a full CRUD cycle against `JsonStore` (including cache expiry and reloading an existing file), and every API route.
 
-Le repository MySQL est testé en conditions réelles quand `TEST_DATABASE_URL` est défini (sinon ces tests sont automatiquement passés) :
+`MysqlStore` is tested against a **real** MySQL instance when `TEST_DATABASE_URL` is set — otherwise those cases skip automatically:
 
 ```bash
 TEST_DATABASE_URL="mysql://root:pass@127.0.0.1:3306/serpcompare" pnpm test
 ```
 
-La couverture serveur est vérifiée avec un seuil (80% lignes/statements, configuré dans `vitest.config.ts`).
+Server coverage is enforced via a threshold in `vitest.config.ts` (80% statements/lines).
 
-## Intégration continue
+## Continuous integration
 
-`.github/workflows/ci.yml` exécute à chaque push/PR sur `main` : `pnpm lint`, `pnpm typecheck`, `pnpm test:coverage` (avec un service MySQL éphémère pour couvrir le `MysqlStore`) et `pnpm build`.
+`.github/workflows/ci.yml` runs on every push and PR to `main`: `pnpm lint` → `pnpm typecheck` → `pnpm test:coverage` (against an ephemeral MySQL service, so `MysqlStore` is exercised in CI too) → `pnpm build`.
 
-## Déploiement
+## Deployment
 
-Le Dockerfile compile le frontend Vite et le serveur TypeScript dans un stage `build`, puis installe uniquement les dépendances de production dans un stage `runtime` séparé (image finale légère, `NODE_ENV=production` fixé explicitement). Express sert le build sur le port fourni par l'environnement. L'endpoint `/health` est prévu pour la sonde de santé. Les assets construits sont servis avec un cache long en production, les routes API restent dynamiques et non mises en cache HTTP.
+The Dockerfile is a two-stage build: a `build` stage compiles the Vite client and the TypeScript server, then a separate `runtime` stage installs only production dependencies and copies the compiled output — a small final image with `NODE_ENV=production` set explicitly. Express serves everything on the port given by the environment. `/health` is meant for the platform's health probe; built assets get a long cache lifetime in production while API routes stay dynamic and uncached.
 
 ```bash
 docker build -t serpcompare .
 docker run -p 3000:3000 -e SERPAPI_KEY=... -e DATABASE_URL=... serpcompare
 ```
 
-## Direction visuelle
+## Visual design
 
-L'interface suit la direction « Signal Atlas » : dashboard éditorial sombre, palette bleu-nuit/cyan/violet, typographies Space Grotesk / Inter / IBM Plex Mono. Détails complets dans [`ideas.md`](ideas.md). Le plan d'implémentation original est dans [`plan.md`](plan.md).
+The UI follows the "Signal Atlas" direction: a dark editorial dashboard, a blue-black/cyan/violet palette, and a Space Grotesk / Inter / IBM Plex Mono type system. Full rationale in [`ideas.md`](ideas.md); the original implementation plan is in [`plan.md`](plan.md).
 
-## Licence
+## License
 
-MIT — voir [`LICENSE`](LICENSE).
+MIT — see [`LICENSE`](LICENSE).
