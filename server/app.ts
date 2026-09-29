@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import path from 'node:path';
 import { z } from 'zod';
 import type { Store, TrackedKeyword } from './domain/types.js';
@@ -27,6 +28,16 @@ export function createApp(store: Store, fetcher = new SerpFetcher(store)) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '50kb' }));
+  app.use(
+    '/api',
+    rateLimit({
+      windowMs: 60_000,
+      limit: 60,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: { code: 'rate_limited', message: 'Trop de requêtes. Réessayez dans un instant.' } },
+    }),
+  );
 
   app.get('/health', (_req, res) => res.json({ ok: true, mode: fetcher.demoMode ? 'demo' : 'serpapi', time: nowIso() }));
 
