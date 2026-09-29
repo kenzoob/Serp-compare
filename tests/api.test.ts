@@ -50,4 +50,70 @@ describe('API', () => {
     expect(result.response.status).toBe(201);
     expect(result.body.tracked.domain).toBe('react.dev');
   });
+
+  it('expose le mode demo via /api/config', async () => {
+    const store = new ApiStore();
+    const result = await call(createApp(store, new SerpFetcher(store, new SerpApiClient(undefined))), '/api/config');
+    expect(result.response.status).toBe(200);
+    expect(result.body).toEqual({ demoMode: true, cacheTtlHours: 24 });
+  });
+
+  it('retourne 404 sur un suivi introuvable pour history, refresh, delete et export', async () => {
+    const store = new ApiStore();
+    const app = createApp(store);
+    expect((await call(app, '/api/tracked/missing/history')).response.status).toBe(404);
+    expect((await call(app, '/api/tracked/missing/refresh', { method: 'POST' })).response.status).toBe(404);
+    expect((await call(app, '/api/tracked/missing', { method: 'DELETE' })).response.status).toBe(404);
+    expect((await call(app, '/api/tracked/missing/export.csv')).response.status).toBe(404);
+  });
+
+  it('rafraîchit un suivi et enregistre un snapshot', async () => {
+    const store = new ApiStore();
+    const app = createApp(store, new SerpFetcher(store, new SerpApiClient(undefined)));
+    const created = await call(app, '/api/tracked', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'react', domain: 'react.dev', gl: 'us', hl: 'en' }) });
+    const result = await call(app, `/api/tracked/${created.body.tracked.id}/refresh`, { method: 'POST' });
+    expect(result.response.status).toBe(200);
+    expect(result.body.tracked.snapshots).toHaveLength(1);
+  });
+
+  it('rafraîchit tous les suivis via /api/refresh', async () => {
+    const store = new ApiStore();
+    const app = createApp(store, new SerpFetcher(store, new SerpApiClient(undefined)));
+    await call(app, '/api/tracked', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'react', domain: 'react.dev', gl: 'us', hl: 'en' }) });
+    await call(app, '/api/tracked', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'vue', domain: 'vuejs.org', gl: 'us', hl: 'en' }) });
+    const result = await call(app, '/api/refresh', { method: 'POST' });
+    expect(result.response.status).toBe(200);
+    expect(result.body.refreshed).toBe(2);
+  });
+
+  it('exporte un suivi en CSV avec un en-tête stable', async () => {
+    const store = new ApiStore();
+    const app = createApp(store);
+    const created = await call(app, '/api/tracked', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'react', domain: 'react.dev', gl: 'us', hl: 'en' }) });
+    const server = app.listen(0);
+    await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+    const address = server.address();
+    const port = typeof address === 'object' && address ? address.port : 0;
+    const response = await fetch(`http://127.0.0.1:${port}/api/tracked/${created.body.tracked.id}/export.csv`);
+    const text = await response.text();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    expect(response.headers.get('content-type')).toContain('text/csv');
+    expect(text.split('\n')[0]).toBe('checked_at,google_position,bing_position,query,domain,gl,hl');
+  });
+
+  it('supprime un suivi existant', async () => {
+    const store = new ApiStore();
+    const app = createApp(store);
+    const created = await call(app, '/api/tracked', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'react', domain: 'react.dev', gl: 'us', hl: 'en' }) });
+    const result = await call(app, `/api/tracked/${created.body.tracked.id}`, { method: 'DELETE' });
+    expect(result.response.status).toBe(204);
+    expect(store.tracked).toHaveLength(0);
+  });
+
+  it('rejette un domaine trop court avec un message de validation', async () => {
+    const store = new ApiStore();
+    const result = await call(createApp(store), '/api/tracked', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: 'react', domain: 'a', gl: 'us', hl: 'en' }) });
+    expect(result.response.status).toBe(400);
+    expect(result.body.error.code).toBe('validation');
+  });
 });

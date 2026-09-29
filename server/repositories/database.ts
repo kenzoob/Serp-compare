@@ -11,7 +11,7 @@ interface JsonState {
 
 const emptyState = (): JsonState => ({ searchResults: [], tracked: [] });
 
-class JsonStore implements Store {
+export class JsonStore implements Store {
   private state: JsonState = emptyState();
   private readonly filePath: string;
   private writeQueue: Promise<void> = Promise.resolve();
@@ -84,7 +84,7 @@ class JsonStore implements Store {
   }
 }
 
-class MysqlStore implements Store {
+export class MysqlStore implements Store {
   constructor(private readonly pool: Pool) {}
 
   async init(): Promise<void> {
