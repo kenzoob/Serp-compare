@@ -1,0 +1,7 @@
+{
+  "routes": [
+    { "path": "/", "title": "Comparer les résultats" },
+    { "path": "/tracking", "title": "Suivi des mots-clés" },
+    { "path": "/tracking/:id", "title": "Historique d’un mot-clé" }
+  ]
+}
