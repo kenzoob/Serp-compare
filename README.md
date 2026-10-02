@@ -20,7 +20,6 @@ No API key required to try it — the app ships with a deterministic demo engine
 - [Testing](#testing)
 - [Continuous integration](#continuous-integration)
 - [Deployment](#deployment)
-- [Visual design](#visual-design)
 - [License](#license)
 
 ## Quickstart
@@ -72,7 +71,7 @@ server/
   index.ts               HTTP entry point
   refresh.ts              CLI: replays every tracked keyword via POST /api/refresh
 tests/                  unit + integration tests (Vitest)
-public/                 logo, route manifest
+public/                 logo
 ```
 
 The server serves the built client (`dist/client`) and the `/api/*` routes from the same origin — one deployable unit, no CORS to manage.
@@ -166,10 +165,6 @@ The Dockerfile is a two-stage build: a `build` stage compiles the Vite client an
 docker build -t serpcompare .
 docker run -p 3000:3000 -e SERPAPI_KEY=... -e DATABASE_URL=... serpcompare
 ```
-
-## Visual design
-
-The UI follows the "Signal Atlas" direction: a dark editorial dashboard, a blue-black/cyan/violet palette, and a Space Grotesk / Inter / IBM Plex Mono type system. Full rationale in [`ideas.md`](ideas.md); the original implementation plan is in [`plan.md`](plan.md).
 
 ## License
 
